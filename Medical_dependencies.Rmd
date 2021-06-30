@@ -1,0 +1,393 @@
+---
+title: "Final Project"
+author: "Daniel Osheroff"
+date: "4/20/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(broom)
+library(mosaic)
+library(infer)
+
+#read insurance data file
+insurance_data = read.csv("~/Downloads/insurance.csv") 
+
+#shorten name
+insurance = insurance_data
+
+#examine data
+head(insurance)
+dim(insurance)
+names(insurance)
+
+#create histogram of charges to understand overall distribution
+ggplot(insurance, aes(x = charges)) +
+  geom_histogram() + 
+  labs(x = "Amount Charged", y = "Frequency")
+
+# The distribution is clearly heavily skewed to the right, and is unimodal
+# with what appears to be a small number of upper outliers
+# to remove some of this skew, we will take the logarithm of charges
+
+#mutate the data to take logarithms
+insurance = insurance %>%
+  mutate(logcharges = log(charges))
+
+ggplot(insurance, aes(x = logcharges)) +
+  geom_histogram() + 
+  labs(x = "Log Amount Charged", y = "Frequency")
+
+
+
+# One can now see that the data looks far more normal and easy to work with
+
+# Create boxplots for charges v categorical variables (sex, smoker)
+
+ggplot(insurance, aes(y = logcharges, x = sex)) + 
+  geom_boxplot()
+
+# Sex does not seem to impact insurance charges, although the variance for 
+# males is slightly larger
+
+ggplot(insurance, aes(y = logcharges, x = smoker)) +
+  geom_boxplot()
+
+# There is a clear relationship that smokers incur larger insurance charges
+
+ggplot(insurance, aes(y = logcharges, x = children)) +
+  geom_boxplot()
+
+# Create scatterplots of charges v age, charges v bmi, charges v children
+
+ggplot(insurance, aes(y = charges, x = age)) +
+  geom_point(alpha = 0.4)
+
+# There appears to be an extremely consistent linear relationship between
+# insurance charges and age, possibly because older individuals are at 
+# higher risk of incurring medical cost. 
+
+ggplot(insurance, aes(y = charges, x = bmi))+
+  geom_point(alpha = 0.4)
+
+# Interestingly, there appears to be little overall correlation between
+# charges and BMI, although there do seem to be 2 distinct groups
+# one with a positive linear relationship and one with no relationship
+
+ggplot(insurance, aes(y = charges, x = bmi, color = smoker))+
+  geom_point(alpha = 0.4)
+
+# Controlling for smoking, one sees that although there is nor relationship
+# between charges and BMI for nonsmokers, there is a positive correlation between
+# charges and BMI for smokers. There is also a jump at bmi = 30 for smokers
+# that is not there for nonsmokers, that for the most part seems to double
+# the overall cost
+
+ggplot(insurance, aes(y = logcharges, x = children)) +
+  geom_point(alpha = 0.4)
+
+# Although variance increases as number of children decreases, there does not
+# appear to be a linear correlation between charges and number of children
+
+```
+
+Now that the data has been analyzed and visualized, we will create models based
+off of the approximately linear relationships viewed. This includes charges
+v BMI for smokers and charges v age. So that the models may be better compared 
+and combined, we will only use data form smokers for the charges v age model as 
+well.
+
+```{r}
+# Subset the data to be smokers only
+insurance_smokers = insurance %>%
+  filter(smoker == "yes")
+
+# Create model of bmi v charges and print summary
+bmi_model = lm(charges ~ bmi, data = insurance_smokers)
+summary(bmi_model)
+
+# Assumption 1 is met because it is reasonable to assume one person's bmi and 
+# insurance charge is independent from another's
+
+# Draw the regression line
+ggplot(insurance_smokers, aes(y = charges, x = bmi)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(slope = 1473.11, intercept = -13186, color = "blue")
+
+# Create a data frame with actual values, predicted values, and residuals from 
+# model
+
+bmi_mod_results = data.frame(observed = insurance_smokers$charges,
+                             predicted = bmi_model$fitted.values,
+                             residual = bmi_model$residuals)
+
+# Plot the residuals versus the predictions
+ggplot(bmi_mod_results, aes(y = residual, x = predicted)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)
+
+# The residual plot does not look great overall. There are clear trends, with the
+# residuals decreasing from predcicted = 9.5 - 10.25, a jump at 10.25, and then
+# decreasing again from 10.5 - 11.5. As such, this model isn't great for the 
+# data, due to the jump at bmi = 30
+
+
+# Create a Q-Q plot of the residuals
+ggplot(bmi_mod_results, aes(sample = residual)) +
+  geom_qq()
+
+# Despite the failings of the residual plot, the Q-Q plot actually look pretty
+# good, and is an approximately straight line
+
+```
+
+Next, we segment the data into bmi > 30 and bmi < 30 to try to remove some of
+the failings of the previous model, using the same steps
+
+```{r}
+
+# Filter the data by bmi greater than and less then or equal to 30
+
+lowbmi_smokers = insurance_smokers %>%
+  filter(bmi <= 30)
+
+highbmi_smokers = insurance_smokers %>%
+  filter(bmi > 30)
+
+# Follow the same steps for model creation and assumption checking
+
+lowbmi_model = lm(charges ~ bmi, data = lowbmi_smokers)
+summary(lowbmi_model)
+
+highbmi_model = lm(charges ~ bmi, data = highbmi_smokers)
+summary(highbmi_model)
+
+ggplot(lowbmi_smokers, aes(y = charges, x = bmi)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(slope = 485.1, intercept = 9071.2, color = "blue")
+
+ggplot(highbmi_smokers, aes(y = charges, x = bmi)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(slope = 508.5, intercept = 23617.2, color = "blue")
+
+
+lowbmi_mod_results = data.frame(observed = lowbmi_smokers$charges,
+                             predicted = lowbmi_model$fitted.values,
+                             residual = lowbmi_model$residuals)
+
+highbmi_mod_results = data.frame(observed = highbmi_smokers$charges,
+                             predicted = highbmi_model$fitted.values,
+                             residual = highbmi_model$residuals)
+
+ggplot(lowbmi_mod_results, aes(y = residual, x = predicted)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)
+
+ggplot(highbmi_mod_results, aes(y = residual, x = predicted)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)
+
+# Both of these residual plots look significantly better, with the points
+# symmetrically clustered around low values of y with no clear pattern.
+# However, there is still failings to the residual plots, as in both, there are
+# numerous data points with extremely high residuals, but a lack of the same 
+# outliers on the lower end
+
+ggplot(lowbmi_mod_results, aes(sample = residual)) +
+  geom_qq()
+
+ggplot(highbmi_mod_results, aes(sample = residual)) +
+  geom_qq()
+
+# The Q-Q plot  looks worse for the more segmented models, perhaps
+# because the variance in the overall data tends to grow far greater as 
+# bmi approaches 30
+
+# From this analysis, it is clear that neither the segmented nor the
+# unsegmented (by bmi) data conforms perfectly to a linear model. Quality
+# of the models will be assessed later in the project
+
+```
+
+Next, we create the charges v age model and assess the assumptions
+
+```{r}
+# Follow the same steps for model creation and assumption checking
+
+age_model = lm(charges ~ age, data = insurance_smokers)
+summary(age_model)
+
+# Assumption 1 is met because it is reasonable to assume one person's age and 
+# insurance charge is independent from another's
+
+ggplot(insurance_smokers, aes(y = charges, x = age)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(slope = 305.24, intercept = 20294, color = "blue")
+
+# It is interesting to note that there are two distinct groups in the data,
+# each of which seems to have a nearly identical linear relationship.
+# None of the other variables in the dataset can account for these two groups,
+# so their cause is unknown, but it most likely has something to do with risk.
+# We sould expect the residual plot to be symmetric and randomly distriuted,
+# but focused towards values of y farther from 0, as the model produces an 
+# estimate that is in the middle of the two distinct groups.
+
+age_mod_results = data.frame(observed = insurance_smokers$charges,
+                             predicted = age_model$fitted.values,
+                             residual = age_model$residuals)
+
+# Plot the residuals versus the predictions
+ggplot(age_mod_results, aes(y = residual, x = predicted)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)
+
+# The residual plot looks exactly as expected and described in the previous
+# block comment, with residual values far from 0, but otherwise randomly
+# and symmetrically distributed
+
+
+# Create a Q-Q plot of the residuals
+ggplot(age_mod_results, aes(sample = residual)) +
+  geom_qq()
+
+# The Q-Q plot consists of 2 distinct sections, one for negative residual
+# values and one for positive, each of which looks like a moderate straight
+# line (and therefore fulfills assuption of 2). To make the residual and 
+# Q-Q plots perfect, one must subset the data by the two distinct groups in the 
+# scatterplot, which cannot be done given that there is no obvious reason
+# for these 2 groups in the dataset. Because of the issues in the residual
+# and Q-Q plots, neither of these models perfectly fulfill assumption 2.
+
+```
+
+Next, we create a multivariate linear model using both age and bmi
+
+```{r}
+
+# Follow the same steps for model creation and assumption checking
+
+combined_model = lm(charges ~ age + bmi, data = insurance_smokers)
+summary(combined_model)
+
+
+combined_mod_results = data.frame(observed = insurance_smokers$charges,
+                             predicted = combined_model$fitted.values,
+                             residual = combined_model$residuals)
+
+ggplot(combined_mod_results, aes(y = residual, x = predicted)) +
+  geom_point() + 
+  geom_hline(yintercept = 0)
+
+# The residual plot has values symmetrically distributed about 0, with low y 
+# values, however there is in obvious pattern, with a break in the middle
+# most likely caused by the break in the age. However, of all the residual
+# plots, this fits the requirements the closest
+
+
+# Create a Q-Q plot of the residuals
+ggplot(combined_mod_results, aes(sample = residual)) +
+  geom_qq()
+
+# The Q-Q plot for the model of combined bmi and age looks correct, with 
+# a single straight line, signifying that the combined model meets assumption
+# 2 better than any of the other previous models
+```
+
+To conclude our work with these models, we assess the quality of each model created using MSPE and R-squared.The R-squared values are  taken from the summaries printed above
+
+```{r}
+# bmi model
+
+#MSPE
+mean(bmi_mod_results$residual^2)
+"R^2: 0.6504"
+
+# lowbmi model
+
+# MSPE
+mean(lowbmi_mod_results$residual^2)
+"R^2: 0.09283"
+
+# highbmi model
+
+# MSPE
+mean(highbmi_mod_results$residual^2)
+"R^2: 0.1333" 
+
+# age model
+
+# MSPE
+mean(age_mod_results$residual^2)
+"R^2: 0.1356"
+
+# combined model
+
+# MSPE
+mean(combined_mod_results$residual^2)
+"R^2: 0.7532"
+
+# From this information, especially that of the R^2 values, combined
+# with information from the assumptions section, we conclude that the 
+# combined model is by far the best model for linear prediction because it has
+# the highest R^2 value, and fits the assumptions the closest (although not 
+# perfectly)
+```
+
+To conclude the project, we will use a 90% confidence interval to predict
+the average cost of insurance for a nonsmoker older than 40 with a bmi under 30.
+
+```{r}
+# Create a dataset of nonsmokers older than 40 with a bmi under 30
+
+confidence_data = insurance %>%
+  filter(smoker == "no") %>%
+  filter(bmi < 30) %>%
+  filter(age >= 40) 
+
+dim(confidence_data)
+
+# Set a random number seed
+
+set.seed(2021)
+
+# Take a sample of 150 people from the dataset
+
+sample = sample(confidence_data, size = 150, replace = FALSE)
+
+head(sample)
+
+# Calculate the sample mean charge
+
+sample_mean = mean(sample$charges)
+sample_sd = sd(sample$charges)
+
+print(sample_mean)
+print(sample_sd)
+
+# n > 40, so we are able to calculate the confidence interval for the mean 
+# charge using the sample mean and standard deviation, using the z value for 
+# a 90% CI, 1.645, and the formula:
+# x_bar ±1.645(s/sqrt(n))
+
+lower_bound = sample_mean - 1.645 * (sample_sd/sqrt(150))
+upper_bound = sample_mean + 1.645 * (sample_sd/sqrt(150))
+
+print(lower_bound)
+print(upper_bound)
+
+# The 90% confidence interval for expected charge for a nonsmoker with bmi
+# under 30 and age over 40 is [10751.93, 12120.89]
+
+
+
+
+
+
