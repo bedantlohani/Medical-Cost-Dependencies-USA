@@ -1,6 +1,4 @@
 ---
-title: "Final Project"
-author: "Daniel Osheroff"
 date: "4/20/2021"
 output:
   pdf_document: default
